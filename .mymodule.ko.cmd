@@ -1,0 +1,1 @@
+cmd_/home/ubuntu/Driver_Project/mymodule.ko := ld -r -EL  -maarch64elf -z noexecstack --build-id=sha1  -T scripts/module.lds -o /home/ubuntu/Driver_Project/mymodule.ko /home/ubuntu/Driver_Project/mymodule.o /home/ubuntu/Driver_Project/mymodule.mod.o;  true
