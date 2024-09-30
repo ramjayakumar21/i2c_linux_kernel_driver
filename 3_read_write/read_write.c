@@ -9,13 +9,22 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Ram Jayakumar GNU/Linux");
 MODULE_DESCRIPTION("Registers a device nr. with some callback functions");
 
+/* Buffer for data */
 static char buffer[255];
-static int buffer_pointer;
+static int buffer_pointer = 0;
+
+/* Variables for device and device class */
+static dev_t my_device_nr;
+static struct class *my_class;
+static struct cdev my_device;
+
+#define DRIVER_NAME "dummydriver"
+#define DRIVER_CLASS "MyModuleClass"
 
 /**
  * @brief Read data out of buffer
  */
-static ssize_t driver_read(struct file *File, const char *user_buffer, size_t count, loff_t *offs) {
+static ssize_t driver_read(struct file *File, char *user_buffer, size_t count, loff_t *offs) {
 	int to_copy, not_copied, delta;
 
 	/* Get amount of data to copy */
@@ -82,7 +91,6 @@ static struct file_operations fops = {
 	.write = driver_write
 };
 
-#define MYMAJOR 90
 
 /**
  * @brief This function is called when the module is loaded into the kernel
@@ -91,17 +99,43 @@ static struct file_operations fops = {
 static int __init ModuleInit(void) {
 	int retval;
 	printk("Hello Kernel!\r\n");
-	/* register device nr. */
-	retval = register_chrdev(MYMAJOR, "my_dev_nr", &fops);
-	if (retval == 0) {
-		printk("dev_nr - registered Device number Major: %d, Minor: %d", MYMAJOR, 0);
-	} else if (retval > 0) {
-		printk("dev_nr - registered Device number Major: %d, Minor: %d", retval >> 20, 0xfffff & retval);
-	} else {
-		printk("dev_nr - Could not register device number!\r\n"); 
+	/* allocate a device nr. */
+	
+	if (alloc_chrdev_region(&my_device_nr, 0, 1, DRIVER_NAME) < 0 ){
+		printk("Device nr. could not be allocated\n");
 		return -1;
 	}
+	printk("read_write - Device nr. Major %d, Minor %d was registered!\r\n", my_device_nr >> 20, 0xfffff && my_device_nr);
+
+	/* Create device class */
+	if ((my_class = class_create(THIS_MODULE, DRIVER_CLASS)) == NULL) {
+		printk("Device class can't be created! \r\n");
+		goto ClassError;
+	}
+
+	/* Create device file */
+	if (device_create(my_class, NULL, my_device_nr, NULL, DRIVER_NAME) == NULL) {
+		printk("Unable to create device file!\r\n");
+		goto FileError;
+	}
+
+	/* Initialize device file */
+	cdev_init(&my_device, &fops);
+
+	/* Registering device to kernel */
+	if (cdev_add(&my_device, my_device_nr, 1) == -1) {
+		printk("Registering device to kernel failed!\n");
+		goto AddError;
+	}
 	return 0;
+
+AddError:
+	device_destroy(my_class, my_device_nr);
+FileError:
+	class_destroy(my_class);
+ClassError:
+	unregister_chrdev(my_device_nr, DRIVER_NAME);
+	return -1;
 }
 
 /**
@@ -109,7 +143,10 @@ static int __init ModuleInit(void) {
  */
 
 static void __exit ModuleExit(void) {
-	unregister_chrdev(MYMAJOR, "my_dev_nr");
+	cdev_del(&my_device);
+	device_destroy(my_class, my_device_nr);
+	class_destroy(my_class);
+	unregister_chrdev(my_device_nr, DRIVER_NAME);
 	printk("Goodbye Kernel!\r\n");
 }
 
